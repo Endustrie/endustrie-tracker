@@ -4,6 +4,7 @@ import {dbOpen, dbGet, dbSet, dbDel, dbKeys} from './db.js';
 import * as SY from './sync.js';
 import {STAGES, stageIdx, stageLabel, newState, upgrade, referencedAtts} from './store.js';
 import {importWorkbook} from './xlsx.js';
+import EXAMPLE from './example.js';
 
 /* ================= helpers ================= */
 const $ = s => document.querySelector(s);
@@ -417,17 +418,29 @@ function bindSetup() {
       persist(); renderAll();
     } catch (e) { alert('Import failed: ' + e.message); }
   });
+  $('#setupExample').addEventListener('click', () => {
+    state.songs = EXAMPLE.songs.map((s, i) => ({id: 's' + i, ...s}));
+    state.artists = structuredClone(EXAMPLE.artists);
+    state.pocs = structuredClone(EXAMPLE.pocs);
+    state.social = structuredClone(EXAMPLE.social);
+    state.marketing = structuredClone(EXAMPLE.marketing);
+    state.albumTitle = EXAMPLE.albumTitle;
+    state.setupDone = true;
+    persist(); renderAll();
+  });
   $('#setupEmpty').addEventListener('click', () => { state.setupDone = true; persist(); renderAll(); });
 }
 
 /* ================= chrome ================= */
 function bindChrome() {
-  const burger = $('#burger'), tabnav = $('#tabnav');
-  const closeMenu = () => { tabnav.classList.remove('open'); burger.setAttribute('aria-expanded', 'false'); };
+  const burger = $('#burger'), tabnav = $('#tabnav'), backdrop = $('#menuBackdrop');
+  const closeMenu = () => { tabnav.classList.remove('open'); backdrop.hidden = true; burger.setAttribute('aria-expanded', 'false'); };
   burger.addEventListener('click', () => {
     const open = tabnav.classList.toggle('open');
+    backdrop.hidden = !open;
     burger.setAttribute('aria-expanded', String(open));
   });
+  backdrop.addEventListener('click', closeMenu);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeMenu(); closeModal(); $('#lightbox').hidden = true; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {

@@ -30,28 +30,30 @@ header.app{border-bottom:1px solid var(--line);background:linear-gradient(180deg
 .syncdot.on{background:var(--good)}
 .syncdot.err{background:var(--red-hi)}
 
-nav.tabs{max-width:1200px;margin:0 auto;padding:0 24px;display:flex;gap:2px;overflow-x:auto}
-.tab{font-family:var(--display);text-transform:uppercase;letter-spacing:.09em;font-size:14px;font-weight:600;
-     padding:10px 18px 9px;color:#C79A97;background:#1F1517;border:1px solid var(--line);border-bottom:none;white-space:nowrap;flex:0 0 auto}
+/* navigation: hamburger drawer at every screen size — no tab strip */
+nav.tabs{position:fixed;top:0;left:0;bottom:0;z-index:70;width:min(300px,82vw);
+         background:var(--panel);border-right:2px solid var(--red);
+         display:none;flex-direction:column;gap:0;padding:16px 14px;overflow-y:auto}
+nav.tabs.open{display:flex}
+nav.tabs::before{content:"Menu";font-family:var(--display);text-transform:uppercase;letter-spacing:.09em;
+                 font-size:13px;color:var(--muted);padding:2px 16px 12px}
+.tab{font-family:var(--display);text-transform:uppercase;letter-spacing:.09em;font-size:15px;font-weight:600;
+     color:#C79A97;background:transparent;border:1px solid var(--line);border-bottom:none;
+     text-align:left;padding:13px 16px;white-space:nowrap}
+.tab:last-child{border-bottom:1px solid var(--line)}
 .tab:hover{color:var(--text);background:#2A1B1D}
 .tab[aria-selected="true"]{background:var(--red);color:#FFF4F2;border-color:var(--red)}
 .tab .badge{font-family:var(--mono);font-size:11px;margin-left:6px;opacity:.85}
+#menuBackdrop{position:fixed;inset:0;z-index:65;background:rgba(10,7,9,.6)}
 
-.burger{display:none;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;
+.burger{display:flex;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;
         padding:10px;border:1px solid var(--line);background:#1F1517;flex:0 0 auto;align-self:center}
+.burger:hover{border-color:var(--red)}
 .burger span{display:block;height:3px;background:var(--red-hi);transition:transform .2s ease,opacity .2s ease}
 .burger[aria-expanded="true"] span:nth-child(1){transform:translateY(8px) rotate(45deg)}
 .burger[aria-expanded="true"] span:nth-child(2){opacity:0}
 .burger[aria-expanded="true"] span:nth-child(3){transform:translateY(-8px) rotate(-45deg)}
 @media (prefers-reduced-motion:reduce){.burger span,.bar>span{transition:none}}
-@media (max-width:760px){
-  .burger{display:flex}
-  nav.tabs{display:none;flex-direction:column;gap:0;padding:0 24px 14px}
-  nav.tabs.open{display:flex}
-  .tab{border:1px solid var(--line);border-bottom:none;text-align:left;padding:13px 16px}
-  .tab:last-child{border-bottom:1px solid var(--line)}
-  .tab[aria-selected="true"]{border-color:var(--red)}
-}
 
 main{max-width:1200px;margin:0 auto;padding:26px 24px 110px}
 section[hidden]{display:none}
