@@ -61,8 +61,26 @@ export const pullShare = async id => {
 };
 export const deleteShare = id => req('DELETE', `endustrie_shares?share_id=eq.${id}`, id);
 
+/* chunked encrypted audio (sync copies and share copies use the same table) */
+export const listAudioRefs = owner =>
+  req('GET', `endustrie_audio?owner_id=eq.${owner}&seq=eq.0&select=ref`, owner).then(rows => rows.map(r => r.ref));
+export async function pushAudioChunks(owner, ref, b64chunks, meta) {
+  for (let seq = 0; seq < b64chunks.length; seq++) {
+    await req('POST', 'endustrie_audio', owner,
+      {owner_id: owner, ref, seq, total: b64chunks.length, chunk: b64chunks[seq], meta: seq === 0 ? meta : null});
+  }
+}
+export async function pullAudioChunks(owner, ref) {
+  const rows = await req('GET', `endustrie_audio?owner_id=eq.${owner}&ref=eq.${ref}&select=seq,total,meta,chunk&order=seq.asc`, owner);
+  if (!rows.length || rows.length !== rows[0].total) return null;
+  return {meta: rows[0].meta, chunks: rows.map(r => r.chunk)};
+}
+export const deleteAudio = (owner, ref) =>
+  req('DELETE', `endustrie_audio?owner_id=eq.${owner}${ref ? `&ref=eq.${ref}` : ''}`, owner);
+
 export async function deleteAll(id) {
   await req('DELETE', `endustrie_sync_v2?sync_id=eq.${id}`, id).catch(() => {});
   await req('DELETE', `endustrie_sync_att?sync_id=eq.${id}`, id).catch(() => {});
+  await req('DELETE', `endustrie_audio?owner_id=eq.${id}`, id).catch(() => {});
   await req('DELETE', `endustrie_sync?sync_id=eq.${id}`, id).catch(() => {});
 }

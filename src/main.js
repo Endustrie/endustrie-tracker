@@ -6,7 +6,8 @@ import {STAGES, stageIdx, stageLabel, newState, upgrade, referencedAtts} from '.
 import {importWorkbook} from './xlsx.js';
 import EXAMPLE from './example.js';
 import {parseLink, linkBadge} from './links.js';
-import {hexToBytes} from './crypto.js';
+import {hexToBytes, aesEncryptBin, aesDecryptBin} from './crypto.js';
+import {bufToB64, b64ToBuf, splitChunks, joinChunks} from './chunks.js';
 
 /* ================= helpers ================= */
 const $ = s => document.querySelector(s);
@@ -50,6 +51,59 @@ async function loadAtts() {
       const u8 = await aesDecrypt(session.masterKey, await dbGet(k));
       attCache.set(k.split(':')[2], new TextDecoder().decode(u8));
     } catch (e) {}
+  }
+}
+/* uploaded song audio: encrypted binary records in IDB, keyed by content hash */
+const MAX_UPLOAD = 60 * 1024 * 1024, MAX_SHARE_AUDIO = 25 * 1024 * 1024;
+async function hashBuf(buf) {
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(h)].slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+const audKey = ref => `aud:${session.profile.id}:${ref}`;
+async function audStoreFile(file) {
+  const buf = await file.arrayBuffer();
+  if (buf.byteLength > MAX_UPLOAD) throw new Error('File is over 60 MB — export an mp3/m4a instead of raw WAV.');
+  const ref = await hashBuf(buf);
+  const {iv, ct} = await aesEncryptBin(session.masterKey, buf);
+  await dbSet(audKey(ref), {iv, ct, name: file.name, type: file.type || 'audio/mpeg', size: buf.byteLength});
+  return {ref, name: file.name, size: buf.byteLength, type: file.type || 'audio/mpeg'};
+}
+async function audBlobUrl(ref) {
+  const rec = await dbGet(audKey(ref));
+  if (!rec) return null;
+  const buf = await aesDecryptBin(session.masterKey, rec.iv, rec.ct);
+  return URL.createObjectURL(new Blob([buf], {type: rec.type}));
+}
+const fmtSize = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+function playInBar(url, title) {
+  const a = $('#playerAudio');
+  if (a.dataset.url) URL.revokeObjectURL(a.dataset.url);
+  a.src = a.dataset.url = url;
+  $('#playerTitle').textContent = title;
+  $('#player').hidden = false;
+  a.play().catch(() => {});
+}
+/* push local uploads to sync, pull missing ones from sync */
+async function syncAudioPush(syncId) {
+  const remote = new Set(await SY.listAudioRefs(syncId));
+  const localRefs = new Set(state.songs.filter(s => s.audioRef).map(s => s.audioRef));
+  for (const ref of localRefs) {
+    if (remote.has(ref)) continue;
+    const rec = await dbGet(audKey(ref));
+    if (!rec) continue;
+    await SY.pushAudioChunks(syncId, ref, splitChunks(rec.ct).map(bufToB64),
+      {iv: bufToB64(rec.iv), name: rec.name, type: rec.type, size: rec.size});
+  }
+  for (const ref of remote) if (!localRefs.has(ref)) await SY.deleteAudio(syncId, ref).catch(() => {});
+}
+async function syncAudioPull(syncId) {
+  for (const s of state.songs) {
+    if (!s.audioRef || await dbGet(audKey(s.audioRef))) continue;
+    const got = await SY.pullAudioChunks(syncId, s.audioRef).catch(() => null);
+    if (got) {
+      await dbSet(audKey(s.audioRef), {iv: b64ToBuf(got.meta.iv), ct: joinChunks(got.chunks.map(b64ToBuf)),
+                                       name: got.meta.name, type: got.meta.type, size: got.meta.size});
+    }
   }
 }
 async function gcAtts() {
@@ -111,6 +165,7 @@ async function syncAll() {
     }
   }
   await SY.deleteAtt(sy.id, [...remote].filter(h => !refs.has(h)));
+  await syncAudioPush(sy.id);
   state.settings.sync.lastAt = new Date().toISOString();
   setSyncDot('on');
   renderSettings();
@@ -127,6 +182,7 @@ async function pullRemoteAtts(syncId) {
       } catch (e) {}
     }
   }
+  await syncAudioPull(syncId).catch(() => {});
 }
 function setSyncDot(mode) {
   const d = $('#syncDot');
@@ -599,7 +655,7 @@ function renderSongs() {
   });
   $('#songBody').innerHTML = rows.length ? rows.map(s => `
     <tr data-song="${s.id}" tabindex="0">
-      <td><button class="playbtn ${audioFor(s) ? 'avail' : ''}" aria-label="Play" type="button">▶</button></td>
+      <td><button class="playbtn ${s.audioRef || audioFor(s) ? 'avail' : ''}" aria-label="Play" title="${s.audioRef ? esc(s.audioName || 'uploaded audio') : ''}" type="button">▶</button></td>
       <td><div class="titlecell">${artThumb(s)}<div><strong>${esc(s.title)}</strong>${s.finished && s.finished !== s.title ? `<span class="ft">Final: ${esc(s.finished)}</span>` : ''}${linkChips(s)}</div></div></td>
       <td>${stageChip(s)}</td>
       <td class="mono">${esc(s.key || '—')}</td>
@@ -611,7 +667,7 @@ function renderSongs() {
 }
 
 /* ================= modal (song editor + collection editor) ================= */
-let editId = null, pendingArt, editColl = null;
+let editId = null, pendingArt, pendingAudio, editColl = null;
 function bindEditor() {
   $('#eKey').innerHTML = KEYS.map(k => `<option value="${k}">${k || '—'}</option>`).join('');
   $('#eStage').innerHTML = STAGES.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
@@ -622,6 +678,27 @@ function bindEditor() {
     if (f) downscale(f, 320, uri => { pendingArt = uri; $('#eArtPrev').src = uri; $('#eArtPrev').classList.remove('ph'); });
   });
   $('#eArtRemove').addEventListener('click', () => { pendingArt = ''; $('#eArtPrev').removeAttribute('src'); $('#eArtPrev').classList.add('ph'); });
+  $('#eAudioFile').addEventListener('change', () => {
+    const f = $('#eAudioFile').files[0];
+    if (!f) return;
+    if (f.size > MAX_UPLOAD) { alert('That file is over 60 MB — export an mp3/m4a instead of raw WAV.'); $('#eAudioFile').value = ''; return; }
+    pendingAudio = f;
+    $('#eAudioInfo').textContent = f.name + ' · ' + fmtSize(f.size) + ' (saves when you hit Save)';
+    $('#eAudioRemove').hidden = false;
+  });
+  $('#eAudioPlay').addEventListener('click', async () => {
+    const s = editId && byId(editId);
+    if (s?.audioRef) {
+      const url = await audBlobUrl(s.audioRef);
+      if (url) playInBar(url, s.finished || s.title);
+    }
+  });
+  $('#eAudioRemove').addEventListener('click', () => {
+    pendingAudio = '';
+    $('#eAudioFile').value = '';
+    $('#eAudioInfo').textContent = 'will be removed on Save';
+    $('#eAudioPlay').hidden = true;
+  });
   $('#eSave').addEventListener('click', () => editColl ? saveCollEditor() : saveSongEditor());
   $('#eDelete').addEventListener('click', () => {
     if (editColl) {
@@ -636,6 +713,7 @@ function bindEditor() {
     const s = byId(editId);
     if (!confirm(`Delete "${s.title}" from the catalog?`)) return;
     pushUndo();
+    if (s.audioRef && !state.songs.some(x => x.id !== s.id && x.audioRef === s.audioRef)) dbDel(audKey(s.audioRef));
     state.songs = state.songs.filter(x => x.id !== editId);
     delete state.audio[editId];
     state.sequence = state.sequence.filter(x => x !== editId);
@@ -656,7 +734,7 @@ function downscale(file, max, cb) {
 }
 function openSongEditor(id) {
   if (VIEWER) { if (id) viewSong(id); return; }
-  editId = id; pendingArt = undefined; editColl = null;
+  editId = id; pendingArt = undefined; pendingAudio = undefined; editColl = null;
   $('#songGrid').hidden = false; $('#collGrid').hidden = true;
   const producers = [...new Set(state.songs.map(s => s.producer).filter(Boolean))];
   const feats = [...new Set(state.artists.map(a => a.stage).concat(state.songs.map(s => s.featured)).filter(Boolean))];
@@ -681,6 +759,10 @@ function openSongEditor(id) {
   $('#eDate').value = s.exportDate || '';
   $('#eNotes').value = s.notes || '';
   renderLinkRows(s.links || []);
+  $('#eAudioFile').value = '';
+  $('#eAudioInfo').textContent = s.audioRef ? `${s.audioName || 'audio'} · ${fmtSize(s.audioSize || 0)}` : '';
+  $('#eAudioPlay').hidden = !s.audioRef;
+  $('#eAudioRemove').hidden = !s.audioRef;
   $('#eShare').style.visibility = id ? 'visible' : 'hidden';
   $('#eAudio').innerHTML = '<option value="">— none linked —</option>' +
     audioFiles.map(f => `<option${state.audio[id] === f ? ' selected' : ''}>${esc(f)}</option>`).join('');
@@ -723,6 +805,18 @@ async function saveSongEditor() {
   if (pendingArt !== undefined) {
     if (pendingArt) song.artRef = await attPut(pendingArt);
     else delete song.artRef;
+  }
+  if (pendingAudio !== undefined) {
+    if (pendingAudio === '') {
+      if (song.audioRef) dbDel(audKey(song.audioRef));
+      delete song.audioRef; delete song.audioName; delete song.audioSize; delete song.audioType;
+    } else if (pendingAudio) {
+      try {
+        const info = await audStoreFile(pendingAudio);
+        song.audioRef = info.ref; song.audioName = info.name;
+        song.audioSize = info.size; song.audioType = info.type;
+      } catch (e) { alert(e.message); return; }
+    }
   }
   persist(); closeModal(); renderAll();
 }
@@ -1172,6 +1266,10 @@ function bindAudio() {
 }
 async function playSong(id) {
   const s = byId(id);
+  if (s.audioRef) {
+    const url = await audBlobUrl(s.audioRef);
+    if (url) { playInBar(url, s.finished || s.title); return; }
+  }
   const fname = audioFor(s);
   if (!fname || !audioDirHandle) return;
   try {
@@ -1374,15 +1472,19 @@ function collectLinkRows() {
 
 /* ================= sharing (read-only snapshot links) ================= */
 function inlineArt(s) { return s.artRef ? attGet(s.artRef) : null; }
-function shareSongShape(s) {
+function shareSongShape(s, withAudio) {
   const {artRef, ...rest} = s;
   const art = inlineArt(s);
-  return art ? {...rest, art} : rest;
+  if (art) rest.art = art;
+  if (withAudio && s.audioRef && (s.audioSize || 0) <= MAX_SHARE_AUDIO) {
+    rest.audioShare = {ref: s.audioRef, name: s.audioName, type: s.audioType, size: s.audioSize};
+  }
+  return rest;
 }
 function buildSharePayload(kind, songId) {
   if (kind === 'song') {
     const s = byId(songId);
-    return {kind: 'song', albumTitle: state.albumTitle || null, sharedAt: new Date().toISOString(), song: shareSongShape(s)};
+    return {kind: 'song', albumTitle: state.albumTitle || null, sharedAt: new Date().toISOString(), song: shareSongShape(s, true)};
   }
   return {kind: 'all', albumTitle: state.albumTitle || null, sharedAt: new Date().toISOString(),
           songs: state.songs.map(shareSongShape), artists: state.artists, pocs: state.pocs,
@@ -1391,7 +1493,22 @@ function buildSharePayload(kind, songId) {
 const shareUrl = rec => location.origin + location.pathname + '#share=' + rec.id + '.' + rec.key;
 async function upsertShare(rec) {
   const key = await importAes(hexToBytes(rec.key));
-  await SY.pushShare(rec.id, await encJson(key, buildSharePayload(rec.kind, rec.songId)));
+  const payload = buildSharePayload(rec.kind, rec.songId);
+  await SY.pushShare(rec.id, await encJson(key, payload));
+  // song shares carry the uploaded audio, re-encrypted under the share key
+  if (rec.kind === 'song') {
+    await SY.deleteAudio(rec.id).catch(() => {});
+    const a = payload.song.audioShare;
+    if (a) {
+      const local = await dbGet(audKey(a.ref));
+      if (local) {
+        const plain = await aesDecryptBin(session.masterKey, local.iv, local.ct);
+        const {iv, ct} = await aesEncryptBin(key, plain);
+        await SY.pushAudioChunks(rec.id, a.ref, splitChunks(ct).map(bufToB64),
+          {iv: bufToB64(iv), name: a.name, type: a.type, size: a.size});
+      }
+    }
+  }
 }
 async function createShare(kind, songId) {
   state.shares = state.shares || [];
@@ -1461,15 +1578,30 @@ function bindLinksAndShares() {
       const rec = shares[t.dataset.srev];
       if (!confirm(`Revoke the share "${rec.name}"? The link will stop working immediately.`)) return;
       await SY.deleteShare(rec.id).catch(() => {});
+      await SY.deleteAudio(rec.id).catch(() => {});
       state.shares = shares.filter(x => x !== rec);
       persist(); renderShares();
     }
   });
   $('#songViewBack').addEventListener('click', e => { if (e.target === $('#songViewBack')) $('#songViewBack').hidden = true; });
-  $('#songViewCard').addEventListener('click', e => {
+  $('#songViewCard').addEventListener('click', async e => {
     const chip = e.target.closest('.linkchip');
     if (chip) openListenLink(JSON.parse(chip.dataset.link));
     if (e.target.id === 'svClose') $('#songViewBack').hidden = true;
+    if (e.target.id === 'svPlaySong' && viewerShare) {
+      e.target.disabled = true;
+      e.target.textContent = 'Downloading…';
+      try {
+        const got = await SY.pullAudioChunks(viewerShare.id, e.target.dataset.ref);
+        if (!got) throw new Error('audio missing');
+        const key = await importAes(hexToBytes(viewerShare.key));
+        const buf = await aesDecryptBin(key, b64ToBuf(got.meta.iv), joinChunks(got.chunks.map(b64ToBuf)));
+        playInBar(URL.createObjectURL(new Blob([buf], {type: got.meta.type || 'audio/mpeg'})), got.meta.name || 'Shared song');
+        e.target.textContent = '▶ Playing';
+      } catch (err) {
+        e.target.textContent = 'Could not load audio';
+      }
+    }
   });
 }
 
@@ -1502,7 +1634,10 @@ function viewSong(id) {
         ${s.exportDate ? `<dt>Exported</dt><dd class="mono">${esc(s.exportDate)}</dd>` : ''}
         ${s.notes ? `<dt>Notes</dt><dd>${esc(s.notes)}</dd>` : ''}
       </dl>
-      ${links ? `<div class="svlinks">${links}</div>` : ''}
+      <div class="svlinks">
+        ${s.audioShare ? `<button class="btn small" id="svPlaySong" data-ref="${esc(s.audioShare.ref)}" type="button">▶ Play song (${fmtSize(s.audioShare.size || 0)})</button>` : ''}
+        ${links}
+      </div>
       <div class="mfoot" style="padding:14px 0 0"><span class="spacer"></span>
         <button class="btn ghost" id="svClose" type="button">Close</button></div>
     </div>`;
@@ -1510,10 +1645,12 @@ function viewSong(id) {
 }
 
 /* ================= viewer boot (shared links) ================= */
+let viewerShare = null;
 async function bootViewer(idKey) {
   const [id, keyHex] = idKey.split('.');
   const row = await SY.pullShare(id);
   if (!row) throw new Error('This share link was revoked or never existed.');
+  viewerShare = {id, key: keyHex};
   const key = await importAes(hexToBytes(keyHex));
   const payload = await decJson(key, row.ciphertext);
   VIEWER = true;

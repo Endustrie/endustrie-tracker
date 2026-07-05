@@ -31,6 +31,16 @@ export async function aesDecrypt(key, str) {
 export const encJson = (key, obj) => aesEncrypt(key, te.encode(JSON.stringify(obj)));
 export const decJson = async (key, str) => JSON.parse(td.decode(await aesDecrypt(key, str)));
 
+/* binary variants for large payloads (audio) — no base64 inflation at rest */
+export async function aesEncryptBin(key, buf) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({name: 'AES-GCM', iv}, key, buf);
+  return {iv, ct: new Uint8Array(ct)};
+}
+export async function aesDecryptBin(key, iv, ct) {
+  return new Uint8Array(await crypto.subtle.decrypt({name: 'AES-GCM', iv}, key, ct));
+}
+
 export async function sha256hex(str) {
   const h = await crypto.subtle.digest('SHA-256', te.encode(str));
   return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');

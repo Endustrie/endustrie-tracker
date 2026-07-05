@@ -324,7 +324,16 @@
         <option>Stems received</option>
       </select></label>
       <label>Last export date<input id="eDate" type="date"></label>
-      <label>Audio file<select id="eAudio"><option value="">— none linked —</option></select></label>
+      <label>Folder audio (Mac)<select id="eAudio"><option value="">— none linked —</option></select></label>
+      <div class="wide" id="eUploadWrap">
+        <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Song file (upload from this device — works from phone files & voice memos)</span>
+        <div class="linkrow" id="eUploadRow">
+          <input type="file" id="eAudioFile" accept="audio/*" style="flex:1">
+          <span id="eAudioInfo" class="mono" style="font-size:12px;color:var(--muted)"></span>
+          <button class="btn ghost small" id="eAudioPlay" type="button" hidden>Play</button>
+          <button class="btn ghost small" id="eAudioRemove" type="button" hidden>Remove</button>
+        </div>
+      </div>
       <label class="wide">Notes<textarea id="eNotes"></textarea></label>
       <div class="wide" id="eLinksWrap">
         <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Listen links (Dropbox, YouTube, anything)</span>
