@@ -1,0 +1,10 @@
+{
+  "appId": "com.endustrie.tracker",
+  "appName": "Endustrie Tracker",
+  "webDir": "dist-single",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#131013"
+  },
+  "backgroundColor": "#131013"
+}
