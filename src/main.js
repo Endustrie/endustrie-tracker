@@ -5,6 +5,8 @@ import * as SY from './sync.js';
 import {STAGES, stageIdx, stageLabel, newState, upgrade, referencedAtts} from './store.js';
 import {importWorkbook} from './xlsx.js';
 import EXAMPLE from './example.js';
+import {parseLink, linkBadge} from './links.js';
+import {hexToBytes} from './crypto.js';
 
 /* ================= helpers ================= */
 const $ = s => document.querySelector(s);
@@ -17,7 +19,7 @@ const REV_CATS = ['Performances', 'Streaming', 'Merch', 'Features', 'Photography
 const QTRS = ['Qtr 1', 'Qtr 2', 'Qtr 3', 'Qtr 4'];
 
 /* ================= session & persistence ================= */
-let profiles = [], session = null, state = null, lastBlob = null;
+let profiles = [], session = null, state = null, lastBlob = null, VIEWER = false;
 const attCache = new Map(); // ref -> dataUri (decrypted)
 
 let saveChain = Promise.resolve();
@@ -383,12 +385,15 @@ const revenueTotal = () => Object.values(state.revenue).reduce((a, v) => a + Num
 /* ================= boot ================= */
 let appStarted = false, nudgeHidden = false;
 function startApp() {
+  state.shares = state.shares || [];
   if (appStarted) { renderAll(); return; }
   appStarted = true;
-  bindChrome(); bindSongs(); bindEditor(); bindAlbum(); bindFinance(); bindSettings(); bindAudio(); bindSetup(); bindPeople();
-  renderAll(); initAutoLock();
+  bindChrome(); bindSongs(); bindEditor(); bindAlbum(); bindFinance(); bindSettings(); bindAudio(); bindSetup(); bindPeople(); bindLinksAndShares();
+  renderAll();
+  if (VIEWER) return;
+  initAutoLock();
   prfSupported().then(ok => {
-    if (ok) { $('#touchIdRow').hidden = false;
+    if (ok && session) { $('#touchIdRow').hidden = false;
       if (session.profile.wrappedPrf) $('#touchIdEnable').textContent = 'Re-enroll Touch ID'; }
   });
   if ('showDirectoryPicker' in window) $('#audioFolderBtn').hidden = false;
@@ -442,7 +447,12 @@ function bindChrome() {
   });
   backdrop.addEventListener('click', closeMenu);
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeMenu(); closeModal(); $('#lightbox').hidden = true; }
+    if (e.key === 'Escape') {
+      closeMenu(); closeModal();
+      $('#lightbox').hidden = true;
+      $('#songViewBack').hidden = true;
+      if (!$('#ytModal').hidden) { $('#ytFrame').src = ''; $('#ytModal').hidden = true; }
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
       e.preventDefault(); doUndo();
     }
@@ -546,6 +556,8 @@ function bindSongs() {
   }));
   $('#addSongBtn').addEventListener('click', () => openSongEditor(null));
   $('#songBody').addEventListener('click', e => {
+    const chip = e.target.closest('.linkchip');
+    if (chip) { openListenLink(byId(chip.dataset.song).links[Number(chip.dataset.li)]); return; }
     if (e.target.closest('.playbtn')) { playSong(e.target.closest('tr[data-song]').dataset.song); return; }
     const tr = e.target.closest('tr[data-song]');
     if (tr) openSongEditor(tr.dataset.song);
@@ -588,7 +600,7 @@ function renderSongs() {
   $('#songBody').innerHTML = rows.length ? rows.map(s => `
     <tr data-song="${s.id}" tabindex="0">
       <td><button class="playbtn ${audioFor(s) ? 'avail' : ''}" aria-label="Play" type="button">▶</button></td>
-      <td><div class="titlecell">${artThumb(s)}<div><strong>${esc(s.title)}</strong>${s.finished && s.finished !== s.title ? `<span class="ft">Final: ${esc(s.finished)}</span>` : ''}</div></div></td>
+      <td><div class="titlecell">${artThumb(s)}<div><strong>${esc(s.title)}</strong>${s.finished && s.finished !== s.title ? `<span class="ft">Final: ${esc(s.finished)}</span>` : ''}${linkChips(s)}</div></div></td>
       <td>${stageChip(s)}</td>
       <td class="mono">${esc(s.key || '—')}</td>
       <td class="mono">${s.bpm || '—'}</td>
@@ -643,6 +655,7 @@ function downscale(file, max, cb) {
   img.src = URL.createObjectURL(file);
 }
 function openSongEditor(id) {
+  if (VIEWER) { if (id) viewSong(id); return; }
   editId = id; pendingArt = undefined; editColl = null;
   $('#songGrid').hidden = false; $('#collGrid').hidden = true;
   const producers = [...new Set(state.songs.map(s => s.producer).filter(Boolean))];
@@ -667,6 +680,8 @@ function openSongEditor(id) {
   stemsSel.value = s.stems || '';
   $('#eDate').value = s.exportDate || '';
   $('#eNotes').value = s.notes || '';
+  renderLinkRows(s.links || []);
+  $('#eShare').style.visibility = id ? 'visible' : 'hidden';
   $('#eAudio').innerHTML = '<option value="">— none linked —</option>' +
     audioFiles.map(f => `<option${state.audio[id] === f ? ' selected' : ''}>${esc(f)}</option>`).join('');
   const art = id && s.artRef ? attGet(s.artRef) : null;
@@ -695,6 +710,7 @@ async function saveSongEditor() {
     stems: $('#eStems').value || null,
     exportDate: $('#eDate').value || null,
     notes: $('#eNotes').value.trim() || null,
+    links: collectLinkRows(),
   };
   let id = editId, song;
   if (!id) {
@@ -1290,6 +1306,8 @@ function download(text, name, type = 'application/json') {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function renderSettings() {
+  if (VIEWER) return;
+  renderShares();
   const sy = state.settings.sync;
   $('#syncState').textContent = sy.enabled ? ('on — last push ' + (sy.lastAt ? new Date(sy.lastAt).toLocaleString() : 'pending')) : 'off';
   $('#syncToggle').textContent = sy.enabled ? 'Disable sync' : 'Enable sync';
@@ -1314,9 +1332,226 @@ function buildAndPrint() {
   window.print();
 }
 
+/* ================= listen links ================= */
+function linkChips(s) {
+  if (!s.links?.length) return '';
+  return '<span>' + s.links.map((l, i) => {
+    const badge = linkBadge(l.url);
+    return `<button class="linkchip ${badge === 'YT' ? 'yt' : ''}" data-song="${s.id}" data-li="${i}" type="button"
+      title="${esc(l.url)}">▶ ${esc(l.label || badge)}</button>`;
+  }).join('') + '</span>';
+}
+function openListenLink(link) {
+  if (!link) return;
+  const p = parseLink(link.url);
+  if (p.type === 'youtube') {
+    $('#ytFrame').src = p.embed;
+    $('#ytModal').hidden = false;
+  } else if (p.type === 'dropbox' && p.audio) {
+    const a = $('#playerAudio');
+    a.src = p.stream;
+    $('#playerTitle').textContent = link.label || 'Dropbox audio';
+    $('#player').hidden = false;
+    a.play().catch(() => window.open(link.url, '_blank', 'noopener'));
+  } else {
+    window.open(link.url, '_blank', 'noopener');
+  }
+}
+function renderLinkRows(links) {
+  $('#eLinks').innerHTML = (links || []).map((l, i) => `
+    <div class="linkrow">
+      <input type="url" class="lurl" placeholder="https://…" value="${esc(l.url || '')}">
+      <input type="text" class="llabel" placeholder="Label (optional)" value="${esc(l.label || '')}">
+      <button class="del" data-rmlink="${i}" aria-label="Remove link" type="button">×</button>
+    </div>`).join('');
+}
+function collectLinkRows() {
+  return [...$('#eLinks').querySelectorAll('.linkrow')].map(row => ({
+    url: row.querySelector('.lurl').value.trim(),
+    label: row.querySelector('.llabel').value.trim() || null,
+  })).filter(l => /^https?:\/\//i.test(l.url));
+}
+
+/* ================= sharing (read-only snapshot links) ================= */
+function inlineArt(s) { return s.artRef ? attGet(s.artRef) : null; }
+function shareSongShape(s) {
+  const {artRef, ...rest} = s;
+  const art = inlineArt(s);
+  return art ? {...rest, art} : rest;
+}
+function buildSharePayload(kind, songId) {
+  if (kind === 'song') {
+    const s = byId(songId);
+    return {kind: 'song', albumTitle: state.albumTitle || null, sharedAt: new Date().toISOString(), song: shareSongShape(s)};
+  }
+  return {kind: 'all', albumTitle: state.albumTitle || null, sharedAt: new Date().toISOString(),
+          songs: state.songs.map(shareSongShape), artists: state.artists, pocs: state.pocs,
+          social: state.social, marketing: state.marketing, sequence: state.sequence, audio: {}};
+}
+const shareUrl = rec => location.origin + location.pathname + '#share=' + rec.id + '.' + rec.key;
+async function upsertShare(rec) {
+  const key = await importAes(hexToBytes(rec.key));
+  await SY.pushShare(rec.id, await encJson(key, buildSharePayload(rec.kind, rec.songId)));
+}
+async function createShare(kind, songId) {
+  state.shares = state.shares || [];
+  let rec = state.shares.find(x => x.kind === kind && x.songId === (songId || null));
+  if (!rec) {
+    rec = {id: randHex(8), key: randHex(32), kind, songId: songId || null,
+           name: kind === 'song' ? (byId(songId).finished || byId(songId).title) : 'Whole tracker',
+           createdAt: new Date().toISOString()};
+    state.shares.push(rec);
+  }
+  await upsertShare(rec);
+  persist(); renderShares();
+  await navigator.clipboard.writeText(shareUrl(rec)).catch(() => {});
+  alert('Share link created and copied to clipboard:\n\n' + shareUrl(rec) +
+        '\n\nAnyone with this link can VIEW (not edit) the shared content. Revoke it any time in Settings.');
+  return rec;
+}
+function renderShares() {
+  if (VIEWER) return;
+  const shares = state.shares || [];
+  $('#shareCount').textContent = shares.length || '';
+  $('#shareList').innerHTML = shares.map((r, i) => `
+    <div class="sharerow">
+      <span class="sn">${esc(r.name)}</span>
+      <span class="chip ${r.kind === 'song' ? 'blue' : 'hot'}">${r.kind === 'song' ? 'Song' : 'Everything'}</span>
+      <button class="btn ghost small" data-scopy="${i}" type="button">Copy link</button>
+      <button class="btn ghost small" data-supd="${i}" type="button">Push update</button>
+      <button class="btn ghost small" data-srev="${i}" type="button">Revoke</button>
+    </div>`).join('');
+}
+function bindLinksAndShares() {
+  $('#eLinkAdd').addEventListener('click', () => {
+    const links = collectLinkRows();
+    links.push({url: '', label: null});
+    renderLinkRows(links);
+    const rows = $('#eLinks').querySelectorAll('.lurl');
+    rows[rows.length - 1].focus();
+  });
+  $('#eLinks').addEventListener('click', e => {
+    const i = e.target.dataset.rmlink;
+    if (i === undefined) return;
+    const links = collectLinkRows();
+    // collect drops empty rows, so re-read raw rows to remove precisely
+    const raw = [...$('#eLinks').querySelectorAll('.linkrow')].map(row => ({
+      url: row.querySelector('.lurl').value, label: row.querySelector('.llabel').value}));
+    raw.splice(Number(i), 1);
+    renderLinkRows(raw);
+  });
+  $('#ytClose').addEventListener('click', () => { $('#ytFrame').src = ''; $('#ytModal').hidden = true; });
+  $('#ytModal').addEventListener('click', e => { if (e.target === $('#ytModal')) { $('#ytFrame').src = ''; $('#ytModal').hidden = true; } });
+  $('#eShare').addEventListener('click', () => {
+    if (!editId) { alert('Save the song first, then share it.'); return; }
+    createShare('song', editId).catch(e => alert('Share failed — are you online? ' + e.message));
+  });
+  $('#shareAllBtn').addEventListener('click', () =>
+    createShare('all').catch(e => alert('Share failed — are you online? ' + e.message)));
+  $('#shareList').addEventListener('click', async e => {
+    const t = e.target;
+    const shares = state.shares || [];
+    if (t.dataset.scopy !== undefined) {
+      await navigator.clipboard.writeText(shareUrl(shares[t.dataset.scopy])).catch(() => {});
+      t.textContent = 'Copied!'; setTimeout(() => t.textContent = 'Copy link', 1400);
+    } else if (t.dataset.supd !== undefined) {
+      try { await upsertShare(shares[t.dataset.supd]); t.textContent = 'Updated!'; setTimeout(() => t.textContent = 'Push update', 1400); }
+      catch (err) { alert('Update failed — are you online?'); }
+    } else if (t.dataset.srev !== undefined) {
+      const rec = shares[t.dataset.srev];
+      if (!confirm(`Revoke the share "${rec.name}"? The link will stop working immediately.`)) return;
+      await SY.deleteShare(rec.id).catch(() => {});
+      state.shares = shares.filter(x => x !== rec);
+      persist(); renderShares();
+    }
+  });
+  $('#songViewBack').addEventListener('click', e => { if (e.target === $('#songViewBack')) $('#songViewBack').hidden = true; });
+  $('#songViewCard').addEventListener('click', e => {
+    const chip = e.target.closest('.linkchip');
+    if (chip) openListenLink(JSON.parse(chip.dataset.link));
+    if (e.target.id === 'svClose') $('#songViewBack').hidden = true;
+  });
+}
+
+/* read-only song card (used by viewer mode) */
+function viewSong(id) {
+  const s = byId(id);
+  if (!s) return;
+  const art = s.art || inlineArt(s);
+  const links = (s.links || []).map(l => {
+    const badge = linkBadge(l.url);
+    return `<button class="linkchip ${badge === 'YT' ? 'yt' : ''}" data-link='${esc(JSON.stringify(l))}' type="button">▶ ${esc(l.label || badge)}</button>`;
+  }).join('');
+  $('#songViewCard').innerHTML = `
+    <div class="songview">
+      <div class="svhead">
+        ${art ? `<img class="svart" src="${art}" alt="">` : ''}
+        <div>
+          <h2>${esc(s.finished || s.title)}</h2>
+          ${s.finished && s.finished !== s.title ? `<div class="sub">Working title: ${esc(s.title)}</div>` : ''}
+          ${stageChip(s)}
+        </div>
+      </div>
+      <dl>
+        ${s.producer ? `<dt>Producer</dt><dd>${esc(s.producer)}</dd>` : ''}
+        ${s.key ? `<dt>Key</dt><dd class="mono">${esc(s.key)}</dd>` : ''}
+        ${s.bpm ? `<dt>BPM</dt><dd class="mono">${s.bpm}</dd>` : ''}
+        ${s.length ? `<dt>Length</dt><dd class="mono">${esc(s.length)}</dd>` : ''}
+        ${s.featured ? `<dt>Featuring</dt><dd>${esc(s.featured)}</dd>` : ''}
+        ${s.stems ? `<dt>Stems</dt><dd>${esc(s.stems)}</dd>` : ''}
+        ${s.exportDate ? `<dt>Exported</dt><dd class="mono">${esc(s.exportDate)}</dd>` : ''}
+        ${s.notes ? `<dt>Notes</dt><dd>${esc(s.notes)}</dd>` : ''}
+      </dl>
+      ${links ? `<div class="svlinks">${links}</div>` : ''}
+      <div class="mfoot" style="padding:14px 0 0"><span class="spacer"></span>
+        <button class="btn ghost" id="svClose" type="button">Close</button></div>
+    </div>`;
+  $('#songViewBack').hidden = false;
+}
+
+/* ================= viewer boot (shared links) ================= */
+async function bootViewer(idKey) {
+  const [id, keyHex] = idKey.split('.');
+  const row = await SY.pullShare(id);
+  if (!row) throw new Error('This share link was revoked or never existed.');
+  const key = await importAes(hexToBytes(keyHex));
+  const payload = await decJson(key, row.ciphertext);
+  VIEWER = true;
+  document.body.classList.add('viewer');
+  $('#lock').style.display = 'none';
+  $('#whoAmI').innerHTML = '<span class="viewerbadge">Shared view · read-only</span>';
+  state = Object.assign(newState(), {setupDone: true, albumTitle: payload.albumTitle});
+  state.settings.autoLockMin = 0;
+  if (payload.kind === 'song') {
+    const s = {...payload.song, id: 's0'};
+    state.songs = [s];
+    startApp();
+    document.querySelector('.tab[data-tab="songs"]').click();
+    viewSong('s0');
+  } else {
+    payload.songs.forEach((s, i) => {
+      s.id = s.id || 's' + i;
+      if (s.art) { attCache.set('share-art-' + i, s.art); s.artRef = 'share-art-' + i; delete s.art; }
+    });
+    Object.assign(state, {songs: payload.songs, artists: payload.artists || [], pocs: payload.pocs || [],
+                          social: payload.social || [], marketing: payload.marketing || [], sequence: payload.sequence || []});
+    startApp();
+  }
+}
+
 /* ================= init ================= */
 (async () => {
   await dbOpen();
+  const shareParam = /#share=([0-9a-f]{16}\.[0-9a-f]{64})/.exec(location.hash);
+  if (shareParam) {
+    try { await bootViewer(shareParam[1]); return; }
+    catch (e) {
+      document.querySelector('#lock .lockpanel').innerHTML =
+        '<h3>Shared link unavailable</h3><p class="sub" style="margin:0">' +
+        (e.message || 'Could not open this share.') + '</p>';
+      return;
+    }
+  }
   profiles = (await dbGet('profiles')) || [];
   bindLock();
   renderProfiles();

@@ -5,8 +5,8 @@ const KEY = 'sb_publishable_WxmGNRaAl3-9CpPNyHyvKA_R0bPkIyq';
 const KEEP_VERSIONS = 10;
 
 const headers = id => ({apikey: KEY, 'X-Sync-Id': id, 'Content-Type': 'application/json'});
-async function req(method, path, id, body) {
-  const r = await fetch(`${BASE}/${path}`, {method, headers: headers(id), body: body ? JSON.stringify(body) : undefined});
+async function req(method, path, id, body, extra) {
+  const r = await fetch(`${BASE}/${path}`, {method, headers: {...headers(id), ...extra}, body: body ? JSON.stringify(body) : undefined});
   if (!r.ok) throw new Error(`sync ${method} ${path.split('?')[0]}: ${r.status}`);
   const txt = await r.text();
   return txt ? JSON.parse(txt) : null;
@@ -50,6 +50,16 @@ export const pullAtt = async (id, hash) => {
 };
 export const deleteAtt = (id, hashes) =>
   hashes.length ? req('DELETE', `endustrie_sync_att?sync_id=eq.${id}&hash=in.(${hashes.map(h => `"${h}"`).join(',')})`, id) : null;
+
+/* read-only shares (key rides in the URL fragment; server sees ciphertext only) */
+export const pushShare = (id, ciphertext) =>
+  req('POST', 'endustrie_shares?on_conflict=share_id', id,
+      {share_id: id, ciphertext, updated_at: new Date().toISOString()}, {'Prefer': 'resolution=merge-duplicates'});
+export const pullShare = async id => {
+  const rows = await req('GET', `endustrie_shares?share_id=eq.${id}&select=ciphertext,updated_at`, id);
+  return rows[0] || null;
+};
+export const deleteShare = id => req('DELETE', `endustrie_shares?share_id=eq.${id}`, id);
 
 export async function deleteAll(id) {
   await req('DELETE', `endustrie_sync_v2?sync_id=eq.${id}`, id).catch(() => {});

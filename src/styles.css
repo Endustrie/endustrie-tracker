@@ -233,6 +233,40 @@ td .ft{color:var(--muted);font-size:12.5px;display:block}
 .setupcard h2{margin-bottom:10px}
 .setupcard .opts{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
 
+/* listen links */
+.linkchip{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.05em;font-weight:700;
+          padding:2px 7px;margin:1px 3px 1px 0;border:1px solid #2C4A5E;color:#7FB4D8;background:#16242E;border-radius:2px;cursor:pointer}
+.linkchip:hover{border-color:#7FB4D8}
+.linkchip.yt{color:#FF8A80;border-color:var(--red-dim);background:#2A1416}
+.linkchip.yt:hover{border-color:var(--red-hi)}
+.linkrow{display:flex;gap:8px;margin-top:6px;align-items:center}
+.linkrow input.lurl{flex:2;min-width:0}
+.linkrow input.llabel{flex:1;min-width:0}
+.ytframe{position:relative;width:min(880px,94vw);aspect-ratio:16/9;background:#000;border:1px solid var(--line)}
+.ytframe iframe{width:100%;height:100%;border:0}
+.ytclose{position:absolute;top:-34px;right:0;font-size:24px;color:var(--text)}
+
+/* shares */
+.sharerow{display:flex;gap:8px;align-items:center;padding:9px 14px;border-top:1px solid #241C1F;flex-wrap:wrap;font-size:13px}
+.sharerow .sn{font-weight:600;flex:1;min-width:140px}
+
+/* read-only shared view */
+body.viewer #undoBtn, body.viewer #lockNow, body.viewer #syncDot,
+body.viewer #addSongBtn, body.viewer #audioFolderBtn, body.viewer [data-addcoll],
+body.viewer .editbtn, body.viewer .del, body.viewer #backupNudge, body.viewer #peopleNudge,
+body.viewer .tab[data-tab="queue"], body.viewer .tab[data-tab="finance"], body.viewer .tab[data-tab="settings"],
+body.viewer #moneyCards, body.viewer .playbtn{display:none!important}
+.viewerbadge{background:var(--warn-bg);border:1px solid #6B5222;color:var(--warn);
+             font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:3px 10px;border-radius:2px}
+.songview{padding:18px}
+.songview .svhead{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.songview .svart{width:120px;height:120px;object-fit:cover;border:1px solid var(--line);background:#0D0A0C}
+.songview h2{font-size:26px}
+.songview dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 14px;font-size:14px}
+.songview dt{color:var(--faint);text-transform:uppercase;font-size:10.5px;letter-spacing:.08em;padding-top:3px}
+.songview dd{margin:0}
+.songview .svlinks{display:flex;gap:8px;flex-wrap:wrap}
+
 #printArea{display:none}
 @media print{
   body{background:#fff;color:#000}

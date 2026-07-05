@@ -248,6 +248,16 @@
       <div class="setrow" id="versionRow" hidden><div class="sl" id="versionList" style="width:100%"></div></div>
     </div>
     <div class="panel" style="margin-bottom:14px">
+      <h3>Sharing <span class="count" id="shareCount"></span></h3>
+      <div class="setrow">
+        <div class="sl"><b>Share the whole tracker</b>
+          <span>Creates a read-only link anyone can open — no account, no passphrase. The snapshot is encrypted;
+          the key rides in the link itself, so only people you send it to can read it. Finance is never included.</span></div>
+        <button class="btn small" id="shareAllBtn" type="button">Create share link</button>
+      </div>
+      <div id="shareList"></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px">
       <h3>Security</h3>
       <div class="setrow">
         <div class="sl"><b>Auto-lock</b><span>Lock the app after this much inactivity.</span></div>
@@ -316,10 +326,16 @@
       <label>Last export date<input id="eDate" type="date"></label>
       <label>Audio file<select id="eAudio"><option value="">— none linked —</option></select></label>
       <label class="wide">Notes<textarea id="eNotes"></textarea></label>
+      <div class="wide" id="eLinksWrap">
+        <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Listen links (Dropbox, YouTube, anything)</span>
+        <div id="eLinks"></div>
+        <button class="btn ghost small" id="eLinkAdd" type="button" style="margin-top:6px">+ Add link</button>
+      </div>
     </div>
     <div class="mgrid" id="collGrid" hidden></div>
     <div class="mfoot">
       <button class="btn ghost small" id="eDelete" type="button">Delete</button>
+      <button class="btn ghost small" id="eShare" type="button">Share this song</button>
       <span class="spacer"></span>
       <button class="btn ghost" id="eCancel" type="button">Cancel</button>
       <button class="btn" id="eSave" type="button">Save</button>
@@ -329,6 +345,9 @@
 <datalist id="dlProducers"></datalist>
 <datalist id="dlFeatured"></datalist>
 <div class="lightbox" id="lightbox" hidden><img id="lightboxImg" alt="Receipt"></div>
+<div class="lightbox" id="ytModal" hidden><div class="ytframe"><iframe id="ytFrame" title="YouTube player" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+  <button class="del ytclose" id="ytClose" aria-label="Close video" type="button">×</button></div></div>
+<div class="modal-back" id="songViewBack" hidden><div class="modal" id="songViewCard"></div></div>
 <div id="player" hidden><span class="pt" id="playerTitle"></span><audio id="playerAudio" controls></audio>
   <button class="del" id="playerClose" aria-label="Close player" type="button">×</button></div>
 <div id="printArea"></div>

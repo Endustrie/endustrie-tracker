@@ -4,6 +4,7 @@ const te = new TextEncoder(), td = new TextDecoder();
 export const b64 = u8 => btoa(String.fromCharCode(...u8));
 export const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 export const randHex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
+export const hexToBytes = h => Uint8Array.from(h.match(/.{2}/g).map(x => parseInt(x, 16)));
 
 export async function kekFromPass(pass, salt) {
   const km = await crypto.subtle.importKey('raw', te.encode(pass), 'PBKDF2', false, ['deriveBits']);
