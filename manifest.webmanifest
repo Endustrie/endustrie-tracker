@@ -1,0 +1,13 @@
+{
+  "name": "Endustrie Tracker",
+  "short_name": "Endustrie",
+  "description": "Encrypted, offline-first music production tracker",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#131013",
+  "theme_color": "#131013",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

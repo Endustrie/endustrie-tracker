@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Endustrie Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#131013">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+  <script type="module" crossorigin src="/endustrie-tracker/assets/index-BTL59meL.js"></script>
+  <link rel="stylesheet" crossorigin href="/endustrie-tracker/assets/index-DU5xS282.css">
+</head>
+<body>
+
+<div id="lock">
+  <div class="lockbox">
+    <div class="brand">Endustrie <span class="rk">Tracker</span></div>
+    <div class="album">v1.001 · Your data is encrypted on this device. Sync is optional and end-to-end encrypted.</div>
+    <div class="lockpanel">
+      <div id="lockChoose">
+        <h3>Who's working?</h3>
+        <div class="profiles" id="profileList"></div>
+        <div class="lockalts">
+          <button class="btn ghost small" id="newProfileBtn" type="button">New profile</button>
+          <button class="btn ghost small" id="restoreSyncBtn" type="button">Restore from sync</button>
+          <button class="btn ghost small" id="restoreBackupBtn" type="button">Restore backup file</button>
+          <input type="file" id="lockBackupFile" accept=".json" hidden>
+        </div>
+      </div>
+      <div id="lockPass" hidden>
+        <h3 id="lockPassTitle">Enter passphrase</h3>
+        <input type="text" id="npName" placeholder="Profile name" autocomplete="off" hidden>
+        <input type="text" id="syncIdInput" placeholder="Sync ID (from the other device)" autocomplete="off" hidden>
+        <input type="password" id="passInput" placeholder="Passphrase" autocomplete="off">
+        <input type="password" id="passConfirm" placeholder="Confirm passphrase" autocomplete="off" hidden>
+        <div class="lockrow">
+          <button class="btn" id="unlockBtn" type="button">Unlock</button>
+          <button class="btn ghost small" id="touchIdBtn" type="button" hidden>Touch ID</button>
+          <button class="btn ghost" id="lockBack" type="button">Back</button>
+        </div>
+        <p class="lockerr" id="lockErr"></p>
+      </div>
+      <p class="locknote">Each profile is encrypted with AES-256 under its passphrase. There is no recovery for a
+      forgotten passphrase — keep an encrypted backup file somewhere safe. Sync stores only ciphertext under a
+      random ID; the server can never read your data.</p>
+    </div>
+  </div>
+</div>
+
+<div id="menuBackdrop" hidden></div>
+<header class="app">
+  <div class="masthead">
+    <div>
+      <div class="brand">Endustrie <span class="rk">Tracker</span></div>
+      <div class="album" id="subline">Encrypted catalog · <span id="songTotal">0</span> tracks</div>
+    </div>
+    <div class="userbox">
+      <span class="syncdot" id="syncDot" title="Sync status"></span>
+      <span class="who" id="whoAmI"></span>
+      <button class="btn ghost small" id="undoBtn" type="button" disabled>Undo</button>
+      <button class="btn ghost small" id="lockNow" type="button">Lock</button>
+    </div>
+    <button class="burger" id="burger" aria-expanded="false" aria-controls="tabnav" aria-label="Menu" type="button">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <nav class="tabs" id="tabnav" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" data-tab="dash" aria-selected="true">Dashboard</button>
+    <button class="tab" role="tab" data-tab="songs" aria-selected="false">Songs</button>
+    <button class="tab" role="tab" data-tab="queue" aria-selected="false">Queue<span class="badge" id="queueBadge"></span></button>
+    <button class="tab" role="tab" data-tab="albumseq" aria-selected="false">Album</button>
+    <button class="tab" role="tab" data-tab="artists" aria-selected="false">Artists</button>
+    <button class="tab" role="tab" data-tab="contacts" aria-selected="false">Contacts</button>
+    <button class="tab" role="tab" data-tab="social" aria-selected="false">Social</button>
+    <button class="tab" role="tab" data-tab="marketing" aria-selected="false">Marketing</button>
+    <button class="tab" role="tab" data-tab="finance" aria-selected="false">Finance</button>
+    <button class="tab" role="tab" data-tab="settings" aria-selected="false">Settings</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-dash" role="tabpanel">
+    <div id="setupPanel" hidden>
+      <div class="setupcard">
+        <h2>Set up your catalog</h2>
+        <p class="sub">This profile is empty. Import your tracker spreadsheet to load songs, artists, contacts,
+        social accounts, and campaigns — or start from scratch.</p>
+        <div class="opts">
+          <button class="btn" id="setupImport" type="button">Import Endustrie trACKER.xlsx</button>
+          <button class="btn ghost" id="setupExample" type="button">Load Reality example</button>
+          <button class="btn ghost" id="setupEmpty" type="button">Start empty</button>
+          <input type="file" id="setupFile" accept=".xlsx" hidden>
+        </div>
+        <p class="footnote">The example is the real Renasance of the Risen catalog — 82 tracks with stages, notes,
+        and stems status — but with all personal contact info stripped. Importing the spreadsheet later replaces it
+        and fills in contacts.</p>
+      </div>
+    </div>
+    <div id="dashContent">
+      <div class="banner" id="backupNudge" hidden>
+        <span class="grow">It's been a while since your last backup — and there's no passphrase recovery.</span>
+        <button class="btn small" id="nudgeBackup" type="button">Export encrypted backup</button>
+        <button class="del" id="nudgeDismiss" aria-label="Dismiss" type="button">×</button>
+      </div>
+      <div class="banner" id="peopleNudge" hidden>
+        <span class="grow">This profile was migrated from an older version — Artists, Contacts, Social, and Marketing
+        are empty. Re-import your spreadsheet (Settings → Import .xlsx) to fill them.</span>
+        <button class="del" id="peopleDismiss" aria-label="Dismiss" type="button">×</button>
+      </div>
+      <h2>Production status</h2>
+      <p class="sub">Where the catalog stands, and what's blocking the album. Click any item to open it.</p>
+      <div class="pipe" id="pipeBar"></div>
+      <div class="pipelegend" id="pipeLegend"></div>
+      <div class="cards" id="statCards"></div>
+      <div class="progress-wrap">
+        <div class="progress-head"><span class="t">Exported or beyond</span><span class="v" id="progLabel"></span></div>
+        <div class="bar"><span id="progBar"></span></div>
+      </div>
+      <div class="cards" id="moneyCards"></div>
+      <div class="two-col">
+        <div class="panel"><h3>Blocked — waiting on vocal stems <span class="count" id="cBlocked"></span></h3><ul id="listBlocked"></ul></div>
+        <div class="panel"><h3>Not yet exported <span class="count" id="cPending"></span></h3><ul id="listPending"></ul></div>
+      </div>
+      <div class="two-col" style="margin-top:14px">
+        <div class="panel"><h3>Open production notes <span class="count" id="cNotes"></span></h3><ul id="listNotes"></ul></div>
+        <div class="panel"><h3>Music videos completed <span class="count" id="cVideos"></span></h3><ul id="listVideos"></ul></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-songs" role="tabpanel" hidden>
+    <h2>Song catalog</h2>
+    <p class="sub">Click a row to open and edit it. Click column headers to sort. ▶ plays linked audio.</p>
+    <div class="toolbar">
+      <input type="search" id="songSearch" placeholder="Search title, producer, feature…" aria-label="Search songs">
+      <div class="filters" id="songFilters"></div>
+      <button class="btn ghost" id="audioFolderBtn" type="button" hidden>Link audio folder</button>
+      <button class="btn" id="addSongBtn" type="button">+ Add song</button>
+    </div>
+    <div class="tablewrap">
+      <table id="songTable">
+        <thead><tr>
+          <th></th>
+          <th class="sortable" data-sort="title">Title <span class="arrow"></span></th>
+          <th class="sortable" data-sort="stage">Stage <span class="arrow"></span></th>
+          <th class="sortable" data-sort="key">Key <span class="arrow"></span></th>
+          <th class="sortable" data-sort="bpm">BPM <span class="arrow"></span></th>
+          <th>Featured</th>
+          <th class="sortable" data-sort="exportDate">Exported <span class="arrow"></span></th>
+          <th>Length</th>
+        </tr></thead>
+        <tbody id="songBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tab-queue" role="tabpanel" hidden>
+    <h2>Work queue</h2>
+    <p class="sub">Open tasks generated from the catalog. Marking a task done updates the song itself — stems become received, exports get today's date, notes are archived. Undo works.</p>
+    <div class="qgroup panel"><h3>To do <span class="count" id="qTodoN"></span></h3><div id="qTodo"></div></div>
+    <div class="qgroup panel"><h3>Snoozed <span class="count" id="qSnoozeN"></span></h3><div id="qSnooze"></div></div>
+  </section>
+
+  <section id="tab-albumseq" role="tabpanel" hidden>
+    <h2>Album sequencing</h2>
+    <p class="sub">Build the tracklist. Drag to reorder, or use the arrows.</p>
+    <div class="albumgrid">
+      <div class="panel">
+        <h3>Tracklist <span class="count" id="seqStats"></span>
+          <button class="btn ghost small" id="seqCopy" type="button">Copy tracklist</button></h3>
+        <div id="seqList"></div>
+      </div>
+      <div class="panel">
+        <h3>Catalog pool</h3>
+        <div class="addrow"><input type="search" id="poolSearch" placeholder="Filter pool…" style="flex:1" aria-label="Filter pool"></div>
+        <div id="poolList" style="max-height:520px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-artists" role="tabpanel" hidden>
+    <h2>Featured artists</h2>
+    <p class="sub">Collaborators on the record. Send split sheets and stem requests here.</p>
+    <div class="toolbar"><span style="flex:1"></span><button class="btn" data-addcoll="artists" type="button">+ Add artist</button></div>
+    <div class="agrid" id="artistGrid"></div>
+  </section>
+
+  <section id="tab-contacts" role="tabpanel" hidden>
+    <h2>Points of contact</h2>
+    <p class="sub">Companies and people attached to the project.</p>
+    <div class="toolbar"><span style="flex:1"></span><button class="btn" data-addcoll="pocs" type="button">+ Add contact</button></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Company</th><th>Contact</th><th>Phone</th><th>Email</th><th>Services</th><th>Status</th><th></th></tr></thead>
+      <tbody id="pocBody"></tbody></table></div>
+  </section>
+
+  <section id="tab-social" role="tabpanel" hidden>
+    <h2>Social media</h2>
+    <p class="sub">Platform presence. (Passwords don't belong here — use a password manager.)</p>
+    <div class="toolbar"><span style="flex:1"></span><button class="btn" data-addcoll="social" type="button">+ Add platform</button></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Platform</th><th>State</th><th>Handle</th><th>Link tree</th><th>Profile pic</th><th>Last updated</th><th>To-do / notes</th><th></th></tr></thead>
+      <tbody id="socialBody"></tbody></table></div>
+  </section>
+
+  <section id="tab-marketing" role="tabpanel" hidden>
+    <h2>Marketing campaigns</h2>
+    <p class="sub">Campaign log.</p>
+    <div class="toolbar"><span style="flex:1"></span><button class="btn" data-addcoll="marketing" type="button">+ Add campaign</button></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Campaign</th><th>Company</th><th>Website</th><th>Services provided</th><th>Kick-off</th><th>Duration</th><th>Notes</th><th></th></tr></thead>
+      <tbody id="mktBody"></tbody></table></div>
+  </section>
+
+  <section id="tab-finance" role="tabpanel" hidden>
+    <h2>Finance</h2>
+    <p class="sub">Revenue by quarter, plus expense reports that work like Concur: group expenses into a report, attach receipts, submit, approve.</p>
+    <div class="panel fin-grid">
+      <h3>Revenue by quarter <button class="btn ghost small" id="revClear" type="button">Clear</button></h3>
+      <div class="tablewrap" style="border:none"><table id="revTable"></table></div>
+    </div>
+    <div class="panel" style="margin-bottom:26px">
+      <h3>Expense reports <button class="btn small" id="newReport" type="button">+ New report</button></h3>
+      <div id="reportArea"></div>
+    </div>
+    <div class="panel">
+      <h3>Spend by month</h3>
+      <div id="chartWrap"><canvas id="expChart" height="190"></canvas></div>
+    </div>
+  </section>
+
+  <section id="tab-settings" role="tabpanel" hidden>
+    <h2>Settings & data</h2>
+    <p class="sub">Endustrie Tracker v1.001 · Everything here is per-profile. Sync and backups never expose readable data.</p>
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Sync between devices <span class="count" id="syncState"></span></h3>
+      <div class="setrow">
+        <div class="sl"><b>End-to-end encrypted sync</b>
+          <span>Pushes your encrypted data under a random ID — the server only ever sees ciphertext. On another
+          device (or your phone), use “Restore from sync” with your Sync ID and passphrase.</span></div>
+        <button class="btn small" id="syncToggle" type="button">Enable sync</button>
+      </div>
+      <div class="setrow" id="syncIdRow" hidden>
+        <div class="sl"><b>Your Sync ID</b><span>Treat it like a key.</span></div>
+        <code id="syncIdShow"></code>
+        <button class="btn ghost small" id="syncNow" type="button">Sync now</button>
+        <button class="btn ghost small" id="syncHistory" type="button">Version history</button>
+      </div>
+      <div class="setrow" id="versionRow" hidden><div class="sl" id="versionList" style="width:100%"></div></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Sharing <span class="count" id="shareCount"></span></h3>
+      <div class="setrow">
+        <div class="sl"><b>Share the whole tracker</b>
+          <span>Creates a read-only link anyone can open — no account, no passphrase. The snapshot is encrypted;
+          the key rides in the link itself, so only people you send it to can read it. Finance is never included.</span></div>
+        <button class="btn small" id="shareAllBtn" type="button">Create share link</button>
+      </div>
+      <div id="shareList"></div>
+    </div>
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Security</h3>
+      <div class="setrow">
+        <div class="sl"><b>Auto-lock</b><span>Lock the app after this much inactivity.</span></div>
+        <select id="autoLockSel">
+          <option value="0">Off</option><option value="5">5 minutes</option>
+          <option value="10" selected>10 minutes</option><option value="30">30 minutes</option>
+        </select>
+      </div>
+      <div class="setrow" id="touchIdRow" hidden>
+        <div class="sl"><b>Touch ID unlock</b><span>Unlock with your fingerprint. Passphrase always works as fallback.</span></div>
+        <button class="btn small" id="touchIdEnable" type="button">Enable Touch ID</button>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Backups & export</h3>
+      <div class="setrow">
+        <div class="sl"><b>Encrypted backup</b><span>A file only your passphrase can open. Restore from the lock screen.</span></div>
+        <button class="btn ghost small" id="btnBackupEnc" type="button">Export encrypted backup</button>
+      </div>
+      <div class="setrow">
+        <div class="sl"><b>Plain exports</b><span>Readable files — handle with care.</span></div>
+        <button class="btn ghost small" id="btnBackup" type="button">Unencrypted JSON</button>
+        <button class="btn ghost small" id="btnCsv" type="button">Songs CSV</button>
+        <button class="btn ghost small" id="btnPrint" type="button">Print status report</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Catalog data</h3>
+      <div class="setrow">
+        <div class="sl"><b>Import spreadsheet</b><span>Import “Endustrie trACKER.xlsx” — fills songs, artists, contacts,
+        social, and campaigns. Songs you added by hand are kept.</span></div>
+        <button class="btn ghost small" id="btnXlsx" type="button">Import .xlsx</button>
+        <input type="file" id="xlsxFile" accept=".xlsx" hidden>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal-back" id="modalBack" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h3 id="mTitle">Edit song</h3>
+    <div class="mgrid" id="songGrid">
+      <div class="artrow">
+        <img class="artprev thumb ph" id="eArtPrev" alt="Album artwork preview">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="flex-direction:row;align-items:center;gap:8px">Artwork
+            <input type="file" id="eArt" accept="image/*" style="max-width:230px"></label>
+          <button class="btn ghost small" id="eArtRemove" type="button" style="align-self:flex-start">Remove artwork</button>
+        </div>
+      </div>
+      <label>Working title<input id="eTitle" type="text"></label>
+      <label>Finished title<input id="eFinished" type="text"></label>
+      <label>Stage<select id="eStage"></select></label>
+      <label>Producer<input id="eProducer" type="text" list="dlProducers"></label>
+      <label>Key<select id="eKey"></select></label>
+      <label>BPM<input id="eBpm" type="number" min="40" max="220"></label>
+      <label>Length (m:ss)<input id="eLength" type="text" placeholder="3:44" pattern="[0-9]+:[0-5][0-9]"></label>
+      <label>Featured artist<input id="eFeatured" type="text" list="dlFeatured"></label>
+      <label>Stems status<select id="eStems">
+        <option value="">Not needed</option>
+        <option>Need Wiz's vocal stems.</option>
+        <option>Stems requested</option>
+        <option>Vocal stems sent out</option>
+        <option>Stems received</option>
+      </select></label>
+      <label>Last export date<input id="eDate" type="date"></label>
+      <label>Folder audio (Mac)<select id="eAudio"><option value="">— none linked —</option></select></label>
+      <div class="wide" id="eUploadWrap">
+        <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Song file (upload from this device — works from phone files & voice memos)</span>
+        <div class="linkrow" id="eUploadRow">
+          <input type="file" id="eAudioFile" accept="audio/*" style="flex:1">
+          <span id="eAudioInfo" class="mono" style="font-size:12px;color:var(--muted)"></span>
+          <button class="btn ghost small" id="eAudioPlay" type="button" hidden>Play</button>
+          <button class="btn ghost small" id="eAudioRemove" type="button" hidden>Remove</button>
+        </div>
+      </div>
+      <label class="wide">Notes<textarea id="eNotes"></textarea></label>
+      <div class="wide" id="eLinksWrap">
+        <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Listen links (Dropbox, YouTube, anything)</span>
+        <div id="eLinks"></div>
+        <button class="btn ghost small" id="eLinkAdd" type="button" style="margin-top:6px">+ Add link</button>
+      </div>
+    </div>
+    <div class="mgrid" id="collGrid" hidden></div>
+    <div class="mfoot">
+      <button class="btn ghost small" id="eDelete" type="button">Delete</button>
+      <button class="btn ghost small" id="eShare" type="button">Share this song</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="eCancel" type="button">Cancel</button>
+      <button class="btn" id="eSave" type="button">Save</button>
+    </div>
+  </div>
+</div>
+<datalist id="dlProducers"></datalist>
+<datalist id="dlFeatured"></datalist>
+<div class="lightbox" id="lightbox" hidden><img id="lightboxImg" alt="Receipt"></div>
+<div class="lightbox" id="ytModal" hidden><div class="ytframe"><iframe id="ytFrame" title="YouTube player" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+  <button class="del ytclose" id="ytClose" aria-label="Close video" type="button">×</button></div></div>
+<div class="modal-back" id="songViewBack" hidden><div class="modal" id="songViewCard"></div></div>
+<div id="player" hidden><span class="pt" id="playerTitle"></span><audio id="playerAudio" controls></audio>
+  <button class="del" id="playerClose" aria-label="Close player" type="button">×</button></div>
+<div id="printArea"></div>
+
+</body>
+</html>
