@@ -1,4 +1,4 @@
-# Endustrie Tracker
+# Endustrie Tracker — v1.001
 
 Encrypted, offline-first music production tracker. Runs as a PWA at
 **https://endustrie.github.io/endustrie-tracker/** — installable on phone and desktop, works offline.

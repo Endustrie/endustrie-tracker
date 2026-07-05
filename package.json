@@ -1,6 +1,6 @@
 {
   "name": "endustrie-tracker",
-  "version": "4.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -19,5 +19,6 @@
     "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^4.1.9"
   },
-  "private": true
+  "private": true,
+  "displayVersion": "v1.001"
 }
